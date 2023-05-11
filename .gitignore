@@ -33,4 +33,6 @@
 
 # VsCode
 *.vscode
-.vscode\*
+.vscode/*
+src/net_tester.exe
+src/data/*

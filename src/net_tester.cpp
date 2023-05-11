@@ -3,7 +3,7 @@
 
 int main(int argc, char const *argv[])
 {
-    /* code */
-    AI_BOB::simple_network s(5,5,3);
+    AI_BOB::simple_network<int8_t> s(5,5,3);
+    s.export_as("bob");
     return 0;
 }
