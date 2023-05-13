@@ -7,6 +7,7 @@
 #include <vector>
 #include <filesystem>
 #include <sstream>
+#include <random>
 
 namespace AI_BOB
 {
@@ -22,9 +23,8 @@ private:
         {  std::ostringstream oss;
         if (!vec.empty())
         {
-            std::copy(vec.begin(), vec.end()-1,
+            std::copy(vec.begin(), vec.end(),
                 std::ostream_iterator<vectype>(oss, ","));
-            oss << vec.back();
         } return oss.str() + "\n";}
 public:
 
@@ -37,7 +37,57 @@ public:
     std::vector<T> get(std::vector<T>& _vec);
 
     void import_from(std::string name)  
-     {  std::ifstream in(name);}
+    {  
+        const fs::path pth{"./" + name + "/data"};
+        std::vector<int> sizes{};
+        std::ifstream in;
+        in.open(pth);
+        std::string str;
+        if (in.is_open()) ;
+        while (getline(in, str))
+        {
+            if (str[0] == (char)(0)) break;
+            sizes.push_back(std::stoi(str));
+        }
+        __input_size = sizes.front();
+        __output_size = sizes.back();
+        layers.clear();
+        for (int i = 1; i < sizes.size(); i++)
+            layers.push_back(hidden_layer(sizes[i], sizes[i-1]));
+        
+
+        for (int i = 0; i < layers.size(); i++)
+        {
+            std::vector<int> weights;
+            std::vector<int> biases;
+            getline(in, str);
+            const std::string delimiter = ",";
+            size_t pos = 0;
+            std::string token;
+            while ((pos = str.find(delimiter)) != std::string::npos) 
+            {
+                token = str.substr(0, pos);
+                weights.push_back(std::stoi(token));
+                str.erase(0, pos + delimiter.length());
+            }
+            getline(in, str);
+            pos = 0;
+            while ((pos = str.find(delimiter)) != std::string::npos) 
+            {
+                token = str.substr(0, pos);
+                biases.push_back(std::stoi(token));
+                str.erase(0, pos + delimiter.length());
+            }
+            std::vector<wb_pair> wbs;
+            for (int i = 0; i < weights.size() && i < biases.size(); i++)
+            {
+                wbs.push_back({weights[i], biases[i]});
+            }
+            layers.at(i).import_values(wbs);
+        }
+
+        in.close();
+    }
 
     void export_as(std::string name)
      {  const fs::path pth{"./" + name};
@@ -47,11 +97,14 @@ public:
         std::for_each(layers.begin(), layers.end(), [&](const hidden_layer& h) {buf += std::to_string(h.get_size()) + '\n';});
         buf += "\n";
         std::for_each(layers.begin(), layers.end(), [&](const hidden_layer& h) 
-         {  const std::string wstr(vec_to_string(h.get_weights()));
-            const std::string bstr(vec_to_string(h.get_biases() ));
-            buf += wstr + bstr; });
+            {  
+                const std::string wstr(vec_to_string(h.get_weights()));
+                const std::string bstr(vec_to_string(h.get_biases() ));
+                buf += wstr + bstr; 
+            });
         std::ofstream out(pth/"data");
-        out << buf; }
+        out << buf; 
+        out.close();}
 
 protected:
 
@@ -63,12 +116,6 @@ protected:
     {
         int weight;
         int bias;
-
-        /*static void operator delete(void* ptr)
-         {  ::operator delete(ptr); }
-
-        static void operator delete[](void* ptr, std::size_t sz)
-         {  ::operator delete(ptr); }*/
     };
 
 
@@ -88,7 +135,7 @@ public:
         __unwrapped_table = std::move(other.__unwrapped_table); }
 
     void import_values(const std::vector<wb_pair>& values) 
-     { __results = std::move(values);}
+     { __unwrapped_table = std::move(values);}
 
     void calculate_results(T* start)
     {  
@@ -101,6 +148,34 @@ public:
             }
             __results[i] = trim(temp);
         }
+    }
+
+    void stochastify(const int amount)
+    {
+        std::random_device r;
+        std::mt19937 rando(r());
+        std::uniform_int_distribution<int> uniform_dist(-amount, amount);
+        std::for_each(__unwrapped_table.begin(), __unwrapped_table.end(), [&](wb_pair& mb) mutable
+            {
+                int num = uniform_dist(rando);
+                mb.weight += (abs((mb.weight + num) - mb.weight) == abs(num)) ? num : 0;
+                num = uniform_dist(rando);
+                mb.bias += (abs((mb.weight + num) - mb.weight) == abs(num)) ? num : 0;
+            });
+    }
+
+    void init_random()
+    {
+        std::random_device r;
+        std::mt19937 rando(r());
+        std::uniform_int_distribution<int> uniform_dist(-(0xFFFFFF), 0xFFFFFF);
+        std::for_each(__unwrapped_table.begin(), __unwrapped_table.end(), [&](wb_pair& mb) mutable
+            {
+                int num = uniform_dist(rando);
+                mb.weight = num;
+                num = uniform_dist(rando);
+                mb.bias num;
+            });
     }
 
     std::vector<T> get_results()
@@ -149,6 +224,92 @@ template<typename T> std::vector<T> simple_network<T>::get(std::vector<T>& _vec)
     }
     return result;
 }
+
+template<typename T> class training_network : public simple_network<T>
+{
+public: 
+
+    struct training_data_entry
+    {
+        std::vector<T> input;
+        std::vector<T> output;
+    };
+
+        template <typename... params>
+    explicit training_network(int size1, int size2, params... args) : simple_network<T>(size1, size2, args...) {}
+    
+    void stochastify(int layer, int amount)
+    {
+        simple_network<T>::layers.at(layer).stochastify(amount);
+    }
+
+    void add_training_data(training_data_entry& t)
+    {
+        datas.push_back(std::move(t));
+    }
+
+    void randomize()
+    {
+        
+    }
+
+    void train()
+    {
+
+    }
+
+protected:
+
+    static constexpr int num_of_checked_layers = 100;
+
+    std::vector<T> replace_layer_get(std::vector<T>& _vec, const class simple_network<T>::hidden_layer& replace_layer, int num)
+    {
+        std::vector<class simple_network<T>::hidden_layer> newlayers = std::move(_vec);
+        newlayers[num] = std::move(replace_layer);
+        std::vector<T> result = std::move(_vec);
+        for (class simple_network<T>::hidden_layer h: newlayers)
+        {
+            h.calculate_results(&result[0]);
+            result = std::move(h.get_results());
+        }
+        return result;
+    }
+
+    int get_cost(const training_data_entry& expected_result, const std::vector<T>& actual_result)
+    {
+        std::vector<int> cost_list;
+        for (int i = 0; i < actual_result.size(); i++)
+        {
+            cost_list.push_back((int) pow(expected_result.output[i] - actual_result[i], 2));
+        }
+        int sum;
+        std::accumulate(cost_list.begin(), cost_list.end(), &sum);
+        return sum;
+    }
+
+    void pass_over_layer(int layer, int scale_factor)
+    {
+        struct cost_pair 
+        {
+            class simple_network<T>::hidden_layer hl;
+            int cost;
+            bool operator<(const cost_pair& cp)
+            {
+                return this->cost < cp.cost;
+            }
+        }; 
+        std::vector<cost_pair> test_layers;
+        for (int i = 0; i < num_of_checked_layers; i++)
+        {
+            test_layers.push_back({std::move(simple_network<T>::layers[layer]),0});
+            test_layers.at(i).hl.stochastify(scale_factor);
+        }
+    }
+
+    std::vector<training_data_entry> datas;
+
+};
+ 
 
 } 
 
